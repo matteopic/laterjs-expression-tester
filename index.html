@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Later.js Expression Tester</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/later/1.2.0/later.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+        }
+        .date-item:nth-child(odd) {
+            background-color: #f1f5f9;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
+        <div class="bg-indigo-600 p-6">
+            <h1 class="text-2xl font-bold text-white mb-2 text-center">Later.js Expression Tester</h1>
+            <p class="text-indigo-100 text-sm text-center">Compose and validate schedules in real-time</p>
+        </div>
+
+        <div class="p-6 space-y-6">
+            <!-- Input Section -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-slate-700">Input Type</label>
+                    <select id="inputType" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="text">Natural Language</option>
+                        <option value="cron">Cron Expression</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-slate-700">Expression</label>
+                    <input type="text" id="expressionInput" 
+                           placeholder="e.g.: every 5 minutes" 
+                           class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+            </div>
+
+            <!-- Validation Message -->
+            <div id="statusMessage" class="hidden p-3 rounded-md text-sm font-medium"></div>
+
+            <!-- Results Section -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-slate-800">Next Occurrences</h2>
+                    <span class="text-xs text-slate-500">First 10 results</span>
+                </div>
+                <div id="resultsList" class="border border-slate-200 rounded-lg overflow-hidden">
+                    <div class="p-4 text-center text-slate-400 italic">Enter a valid expression to see results</div>
+                </div>
+            </div>
+
+            <!-- Examples -->
+            <div class="bg-slate-50 p-4 rounded-lg">
+                <h3 class="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Common Examples</h3>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="applyExample('text', 'every 5 minutes')" class="px-3 py-1 bg-white border border-slate-300 rounded-full text-xs hover:bg-indigo-50 transition-colors">Every 5 min</button>
+                    <button onclick="applyExample('text', 'at 10:00 am on Tues and Thurs')" class="px-3 py-1 bg-white border border-slate-300 rounded-full text-xs hover:bg-indigo-50 transition-colors">Tue & Thu at 10:00 AM</button>
+                    <button onclick="applyExample('cron', '0 0/15 * * * ?')" class="px-3 py-1 bg-white border border-slate-300 rounded-full text-xs hover:bg-indigo-50 transition-colors">Cron: Every 15 min</button>
+                    <button onclick="applyExample('text', 'on the last day of the month')" class="px-3 py-1 bg-white border border-slate-300 rounded-full text-xs hover:bg-indigo-50 transition-colors">Last day of month</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-100 p-4 border-t border-slate-200 text-center">
+            <p class="text-xs text-slate-500">Later.js uses UTC by default. The results shown here are converted to your local timezone.</p>
+        </div>
+    </div>
+
+    <script>
+        const inputType = document.getElementById('inputType');
+        const expressionInput = document.getElementById('expressionInput');
+        const resultsList = document.getElementById('resultsList');
+        const statusMessage = document.getElementById('statusMessage');
+
+        // Later.js config: Use local time for testing
+        later.date.localTime();
+
+        function updateSchedule() {
+            const type = inputType.value;
+            const val = expressionInput.value.trim();
+
+            if (!val) {
+                clearDisplay();
+                return;
+            }
+
+            let schedule;
+            try {
+                if (type === 'text') {
+                    schedule = later.parse.text(val);
+                } else {
+                    schedule = later.parse.cron(val);
+                }
+
+                // Check for syntax errors (Later.js returns -1 if no error in text parsing)
+                if (schedule.error !== -1 && type === 'text') {
+                    showError(`Syntax error at position ${schedule.error}`);
+                    return;
+                }
+
+                if (!schedule.schedules || schedule.schedules.length === 0) {
+                    showError("Invalid or incomplete expression.");
+                    return;
+                }
+
+                showSuccess("Valid expression!");
+                displayOccurrences(schedule);
+
+            } catch (err) {
+                showError("Critical parsing error: " + err.message);
+            }
+        }
+
+        function displayOccurrences(sched) {
+            const occurrences = later.schedule(sched).next(10);
+            
+            if (!occurrences || occurrences.length === 0) {
+                resultsList.innerHTML = '<div class="p-4 text-center text-red-500 italic">No future occurrences found.</div>';
+                return;
+            }
+
+            let html = '';
+            occurrences.forEach((date, index) => {
+                const formatted = new Intl.DateTimeFormat('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }).format(date);
+
+                html += `
+                    <div class="date-item p-3 flex items-center border-b border-slate-100 last:border-0">
+                        <span class="w-8 text-slate-400 font-mono text-xs">${index + 1}.</span>
+                        <span class="text-slate-700 font-medium">${formatted}</span>
+                    </div>
+                `;
+            });
+            resultsList.innerHTML = html;
+        }
+
+        function showError(msg) {
+            statusMessage.textContent = msg;
+            statusMessage.className = "p-3 rounded-md text-sm font-medium bg-red-100 text-red-700 block";
+            resultsList.innerHTML = '<div class="p-4 text-center text-slate-400 italic">Fix the expression to see occurrences</div>';
+        }
+
+        function showSuccess(msg) {
+            statusMessage.textContent = msg;
+            statusMessage.className = "p-3 rounded-md text-sm font-medium bg-green-100 text-green-700 block";
+        }
+
+        function clearDisplay() {
+            statusMessage.className = "hidden";
+            resultsList.innerHTML = '<div class="p-4 text-center text-slate-400 italic">Enter a valid expression to see results</div>';
+        }
+
+        function applyExample(type, val) {
+            inputType.value = type;
+            expressionInput.value = val;
+            updateSchedule();
+        }
+
+        // Event Listeners
+        expressionInput.addEventListener('input', updateSchedule);
+        inputType.addEventListener('change', updateSchedule);
+
+        // Init with example
+        window.onload = () => {
+            applyExample('text', 'every 2 hours');
+        };
+    </script>
+</body>
+</html>
